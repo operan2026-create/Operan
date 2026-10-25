@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 backend/venv/
 __pycache__/
 *.pyc
@@ -16,3 +16,6 @@ redis_data/
 # IDE
 .vscode/
 .idea/
+
+# Archives
+*.zip

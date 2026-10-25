@@ -31,6 +31,8 @@ async def list_missions(
     status: Optional[MissionStatus] = None,
     city: Optional[str] = None,
     state: Optional[str] = None,
+    assigned_user_id: Optional[UUID] = None,
+    organization_ids: Optional[List[UUID]] = None,
 ) -> List[dict]:
     query = (
         select(Mission)
@@ -43,8 +45,13 @@ async def list_missions(
         query = query.where(Mission.city.ilike(f"%{city}%"))
     if state:
         query = query.where(Mission.state == state.upper())
+    if assigned_user_id:
+        query = query.where(Mission.assigned_user_id == assigned_user_id)
+    if organization_ids is not None:
+        query = query.join(Location, Mission.location_id == Location.id).where(Location.organization_id.in_(organization_ids))
 
     res = await db.execute(query)
+
     missions = res.scalars().all()
     output = []
     for m in missions:

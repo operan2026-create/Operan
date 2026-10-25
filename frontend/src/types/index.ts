@@ -1,3 +1,12 @@
+export interface MembershipInfo {
+  id: string
+  organization_id: string
+  organization_name?: string
+  role_id: string
+  role_name: string
+  status: string
+}
+
 export interface User {
   id: string
   public_id: string
@@ -5,6 +14,10 @@ export interface User {
   status: 'ACTIVE' | 'PENDING' | 'BLOCKED'
   mfa_enabled: boolean
   created_at: string
+  primary_role?: 'ADMIN' | 'CLIENT' | 'PARTICIPANT'
+  roles?: string[]
+  memberships?: MembershipInfo[]
+  professional?: Professional
 }
 
 export interface Organization {
@@ -20,6 +33,7 @@ export interface AuthResponse {
   token_type: string
   user: User
 }
+
 
 export interface Lesson {
   id: string
@@ -110,14 +124,18 @@ export interface Mission {
 export interface Professional {
   id: string
   user_id: string
-  public_id: string
+  public_id?: string
   full_name: string
-  cpf_hash: string
+  cpf_hash?: string
   phone_encrypted?: string
   city: string
   state: string
-  radius_km: number
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
-  created_at: string
+  operational_radius_km?: number
+  radius_km?: number
+  reputation_score?: number
+  availability_status?: 'AVAILABLE' | 'UNAVAILABLE' | 'IN_MISSION'
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
+  created_at?: string
   email?: string
 }
+

@@ -3,8 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
 
-from app.core.deps import get_db, get_current_active_user
-from app.models.user import User
+from app.core.deps import get_db, require_admin, UserContext
 from app.models.role import Role
 from app.schemas.role import RoleCreate, RoleResponse
 
@@ -14,7 +13,7 @@ router = APIRouter(prefix="/roles", tags=["Roles"])
 async def create_role(
     role_in: RoleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    context: UserContext = Depends(require_admin),
 ):
     existing = await db.execute(select(Role).where(Role.name == role_in.name))
     if existing.scalars().first():
@@ -28,7 +27,8 @@ async def create_role(
 @router.get("", response_model=List[RoleResponse])
 async def list_roles(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    context: UserContext = Depends(require_admin),
 ):
     result = await db.execute(select(Role))
     return [RoleResponse.model_validate(r) for r in result.scalars().all()]
+

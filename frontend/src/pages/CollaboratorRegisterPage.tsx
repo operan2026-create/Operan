@@ -42,9 +42,9 @@ export function CollaboratorRegisterPage() {
         operational_radius_km: Number(radius),
       })
 
-      // Store JWT token and redirect to Academy
+      // Store JWT token and redirect to Participant Academy
       localStorage.setItem('operan_token', res.data.access_token)
-      navigate('/admin/academy')
+      navigate('/participante/academy')
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Erro ao realizar cadastro. Verifique os dados e tente novamente.')
     } finally {

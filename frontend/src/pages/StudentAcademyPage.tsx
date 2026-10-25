@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { GraduationCap, ArrowRight, BookOpen, Clock, ShieldCheck } from 'lucide-react'
 import api from '../api/client'
 import { Card } from '../components/ui/Card'
@@ -8,6 +8,9 @@ import type { Course } from '../types'
 
 export function StudentAcademyPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const isInsideAdmin = location.pathname.startsWith('/admin')
+  const passportPath = isInsideAdmin ? '/admin/academy' : '/participante'
 
   const { data: courses, isLoading } = useQuery({
     queryKey: ['student-courses'],
@@ -38,7 +41,7 @@ export function StudentAcademyPage() {
             Cada curso concluído emite uma certificação verificável no seu Passaporte Operacional, elevando seu score de reputação e habilitando você para funções de campo com maior remuneração.
           </p>
         </div>
-        <Button variant="secondary" onClick={() => navigate('/admin/passport')}>
+        <Button variant="secondary" onClick={() => navigate(passportPath)}>
           <ShieldCheck className="w-4 h-4 mr-2 text-violet-400" /> Ver Meu Passaporte
         </Button>
       </div>
@@ -92,7 +95,10 @@ export function StudentAcademyPage() {
                     className="w-full justify-between"
                     onClick={() => {
                       if (firstLesson) {
-                        navigate(`/admin/academy/course/${course.id}/lesson/${firstLesson.id}`)
+                        const targetPath = isInsideAdmin
+                          ? `/admin/academy/course/${course.id}/lesson/${firstLesson.id}`
+                          : `/participante/academy/course/${course.id}/lesson/${firstLesson.id}`
+                        navigate(targetPath)
                       }
                     }}
                   >

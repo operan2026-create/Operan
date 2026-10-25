@@ -36,6 +36,7 @@ async def list_locations(
     city: Optional[str] = None,
     state: Optional[str] = None,
     status: Optional[LocationStatus] = None,
+    organization_ids: Optional[List[UUID]] = None,
 ) -> List[Location]:
     query = select(Location).order_by(Location.created_at.desc())
     if city:
@@ -44,9 +45,12 @@ async def list_locations(
         query = query.where(Location.state == state.upper())
     if status:
         query = query.where(Location.status == status)
+    if organization_ids is not None:
+        query = query.where(Location.organization_id.in_(organization_ids))
 
     res = await db.execute(query)
     return list(res.scalars().all())
+
 
 async def update_location_status(
     db: AsyncSession,

@@ -18,8 +18,15 @@ export function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
-      navigate('/admin')
+      const res = await login(email, password)
+      const role = res.user.primary_role
+      if (role === 'ADMIN') {
+        navigate('/admin')
+      } else if (role === 'CLIENT') {
+        navigate('/cliente')
+      } else {
+        navigate('/participante')
+      }
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Credenciais inválidas.')
     } finally {

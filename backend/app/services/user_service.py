@@ -98,3 +98,76 @@ async def authenticate_user(
     if not verify_password(password, user.password_hash):
         return None
     return user
+
+
+async def ensure_default_roles(db: AsyncSession):
+    """Ensures foundational system roles exist in the database."""
+    from app.models.role import Role
+
+    default_roles = [
+        {"name": "ADMIN", "is_system": True, "description": "Administrador Geral da Plataforma OPERAN"},
+        {"name": "CLIENT_ADMIN", "is_system": False, "description": "Gestor da Banca / Organizadora Cliente"},
+        {"name": "CLIENT_OPERATOR", "is_system": False, "description": "Operador da Banca / Organizadora Cliente"},
+        {"name": "PARTICIPANT", "is_system": False, "description": "Colaborador Operacional / Participante de Campo"},
+    ]
+    for r in default_roles:
+        res = await db.execute(select(Role).where(Role.name == r["name"]))
+        if not res.scalars().first():
+            db.add(Role(name=r["name"], is_system=r["is_system"], description=r["description"]))
+    await db.commit()
+
+
+async def get_or_create_admin_organization(db: AsyncSession):
+    """Returns the internal platform organization for administrators."""
+    from app.models.organization import Organization
+    from app.services.organization_service import create_organization
+
+    res = await db.execute(select(Organization).where(Organization.name == "OPERAN Matriz"))
+    org = res.scalars().first()
+    if not org:
+        org = await create_organization(db, name="OPERAN Matriz")
+    return org
+
+
+async def assign_role_to_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    role_name: str,
+    organization_id: Optional[uuid.UUID] = None,
+):
+    """Assigns or updates a user membership role in an organization."""
+    from app.models.role import Role
+    from app.models.membership import Membership, MembershipStatus
+
+    await ensure_default_roles(db)
+    role_res = await db.execute(select(Role).where(Role.name == role_name))
+    role = role_res.scalars().first()
+    if not role:
+        raise ValueError(f"Role {role_name} não encontrada.")
+
+    if not organization_id:
+        admin_org = await get_or_create_admin_organization(db)
+        organization_id = admin_org.id
+
+    mem_res = await db.execute(
+        select(Membership).where(
+            Membership.user_id == user_id,
+            Membership.organization_id == organization_id,
+        )
+    )
+    membership = mem_res.scalars().first()
+    if membership:
+        membership.role_id = role.id
+        membership.status = MembershipStatus.ACTIVE
+    else:
+        membership = Membership(
+            user_id=user_id,
+            organization_id=organization_id,
+            role_id=role.id,
+            status=MembershipStatus.ACTIVE,
+        )
+        db.add(membership)
+    await db.commit()
+    await db.refresh(membership)
+    return membership
+

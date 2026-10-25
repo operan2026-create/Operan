@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import api from '../api/client'
 import type { User, AuthResponse } from '../types'
 
@@ -6,16 +6,26 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const fetchCurrentUser = async () => {
     const token = localStorage.getItem('operan_token')
     if (token) {
-      api.get('/auth/me')
-        .then(res => setUser(res.data))
-        .catch(() => setUser(null))
-        .finally(() => setLoading(false))
+      try {
+        const res = await api.get<User>('/auth/me')
+        setUser(res.data)
+      } catch {
+        localStorage.removeItem('operan_token')
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
     } else {
+      setUser(null)
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    fetchCurrentUser()
   }, [])
 
   const login = async (email: string, password: string): Promise<AuthResponse> => {
@@ -31,5 +41,21 @@ export function useAuth() {
     window.location.href = '/login'
   }
 
-  return { user, loading, login, logout }
+  const primaryRole = user?.primary_role || 'PARTICIPANT'
+  const isAdmin = primaryRole === 'ADMIN'
+  const isClient = primaryRole === 'CLIENT'
+  const isParticipant = primaryRole === 'PARTICIPANT'
+
+  return {
+    user,
+    loading,
+    login,
+    logout,
+    primaryRole,
+    isAdmin,
+    isClient,
+    isParticipant,
+    refetchUser: fetchCurrentUser,
+  }
 }
+
