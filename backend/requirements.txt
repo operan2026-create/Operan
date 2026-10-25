@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+asyncpg
+alembic
+argon2-cffi
+cryptography
+PyJWT
+greenlet
+email-validator
+passlib[argon2]
