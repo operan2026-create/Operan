@@ -49,10 +49,11 @@ async def list_orgs(
         orgs = await organization_service.get_organizations(db, skip=skip, limit=limit)
         return [OrganizationResponse.model_validate(o) for o in orgs]
     elif context.is_client:
-        # Multi-tenant isolation: client only sees their own affiliated organizations
-        all_orgs = await organization_service.get_organizations(db, skip=skip, limit=limit)
-        allowed = [o for o in all_orgs if o.id in context.client_organization_ids]
-        return [OrganizationResponse.model_validate(o) for o in allowed]
+        # Multi-tenant isolation: query restricted to the caller's organizations.
+        orgs = await organization_service.get_organizations_by_ids(
+            db, context.client_organization_ids, skip=skip, limit=limit
+        )
+        return [OrganizationResponse.model_validate(o) for o in orgs]
     else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

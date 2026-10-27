@@ -3,7 +3,7 @@ from sqlalchemy.orm import declarative_base
 from app.core.config import settings
 
 # Create async engine for PostgreSQL
-engine = create_async_engine(settings.DATABASE_URL, echo=True, future=True)
+engine = create_async_engine(settings.DATABASE_URL, echo=settings.SQL_ECHO, future=True)
 
 # Create session factory
 async_session = async_sessionmaker(

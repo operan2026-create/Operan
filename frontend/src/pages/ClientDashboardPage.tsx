@@ -17,17 +17,17 @@ export function ClientDashboardPage() {
   })
 
   const { data: locations } = useQuery({
-    queryKey: ['client-locations'],
+    queryKey: ['locations', 'cliente'],
     queryFn: () => api.get<Location[]>('/locations').then(r => r.data),
   })
 
   const { data: missions } = useQuery({
-    queryKey: ['client-missions'],
+    queryKey: ['missions', 'cliente'],
     queryFn: () => api.get<Mission[]>('/missions').then(r => r.data),
   })
 
   const { data: professionals } = useQuery({
-    queryKey: ['client-professionals'],
+    queryKey: ['professionals', 'cliente'],
     queryFn: () => api.get<Professional[]>('/professionals').then(r => r.data).catch(() => []),
   })
 

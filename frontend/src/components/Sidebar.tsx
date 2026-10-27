@@ -9,6 +9,8 @@ import {
   Settings,
   Shield,
   LogOut,
+  MailPlus,
+  UserRound,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -19,6 +21,8 @@ const nav = [
   { to: '/admin/locations', icon: MapPin, label: 'Locais de Aplicação' },
   { to: '/admin/missions', icon: Target, label: 'Missions' },
   { to: '/admin/network', icon: Users, label: 'Rede de Colaboradores' },
+  { to: '/admin/invitations', icon: MailPlus, label: 'Convites' },
+  { to: '/admin/participants', icon: UserRound, label: 'Participantes' },
   { to: '/admin/security', icon: Shield, label: 'Segurança' },
   { to: '/admin/settings', icon: Settings, label: 'Configurações' },
 ]

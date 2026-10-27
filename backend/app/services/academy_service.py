@@ -1,11 +1,24 @@
 from typing import List, Optional
+from uuid import UUID
+
+from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from uuid import UUID
 
-from app.models.academy import Course, CourseVersion, Module, Lesson, Certification, CourseStatus, CertificationStatus
+from app.models.academy import (
+    Course,
+    CourseVersion,
+    Module,
+    Lesson,
+    LessonCompletion,
+    Certification,
+    CourseStatus,
+    CourseAudience,
+    CertificationStatus,
+)
 from app.schemas.academy import CourseCreate, ModuleCreate, LessonCreate
+
 
 async def create_course(db: AsyncSession, course_in: CourseCreate) -> Course:
     course = Course(
@@ -14,6 +27,7 @@ async def create_course(db: AsyncSession, course_in: CourseCreate) -> Course:
         thumbnail_url=course_in.thumbnail_url,
         status=course_in.status,
         organization_id=course_in.organization_id,
+        audience=course_in.audience,
     )
     db.add(course)
     await db.flush()
@@ -29,40 +43,114 @@ async def create_course(db: AsyncSession, course_in: CourseCreate) -> Course:
     await db.refresh(course)
     return await get_course_by_id(db, str(course.id))
 
+
+def _with_full_content(query):
+    return query.options(
+        selectinload(Course.versions)
+        .selectinload(CourseVersion.modules)
+        .selectinload(Module.lessons)
+    )
+
+
 async def list_courses(
     db: AsyncSession,
-    organization_id: Optional[UUID] = None,
+    organization_ids: Optional[List[UUID]] = None,
     published_only: bool = False,
+    global_published_only: bool = False,
+    audiences: Optional[List[CourseAudience]] = None,
 ) -> List[Course]:
-    query = (
-        select(Course)
-        .options(
-            selectinload(Course.versions)
-            .selectinload(CourseVersion.modules)
-            .selectinload(Module.lessons)
+    query = _with_full_content(select(Course)).order_by(Course.created_at.desc())
+
+    if audiences is not None:
+        query = query.where(
+            or_(
+                Course.audience == CourseAudience.GLOBAL,
+                Course.audience.in_(audiences),
+            )
         )
-        .order_by(Course.created_at.desc())
-    )
+
     if published_only:
         query = query.where(Course.status == CourseStatus.PUBLISHED)
-    if organization_id:
-        query = query.where((Course.organization_id == organization_id) | (Course.organization_id.is_(None)))
+
+    if organization_ids is not None:
+        if global_published_only:
+            query = query.where(
+                or_(
+                    Course.organization_id.in_(organization_ids),
+                    (
+                        Course.organization_id.is_(None)
+                        & (Course.status == CourseStatus.PUBLISHED)
+                    ),
+                )
+            )
+        else:
+            query = query.where(
+                or_(
+                    Course.organization_id.in_(organization_ids),
+                    Course.organization_id.is_(None),
+                )
+            )
 
     result = await db.execute(query)
     return list(result.scalars().all())
 
-async def get_course_by_id(db: AsyncSession, course_id: str) -> Optional[Course]:
+
+async def get_course_by_id(
+    db: AsyncSession,
+    course_id: str,
+    organization_ids: Optional[List[UUID]] = None,
+    published_only: bool = False,
+    global_published_only: bool = False,
+    audiences: Optional[List[CourseAudience]] = None,
+) -> Optional[Course]:
+    query = _with_full_content(select(Course)).where(Course.id == course_id)
+
+    if audiences is not None:
+        query = query.where(
+            or_(
+                Course.audience == CourseAudience.GLOBAL,
+                Course.audience.in_(audiences),
+            )
+        )
+
+    if published_only:
+        query = query.where(Course.status == CourseStatus.PUBLISHED)
+
+    if organization_ids is not None:
+        if global_published_only:
+            query = query.where(
+                or_(
+                    Course.organization_id.in_(organization_ids),
+                    (
+                        Course.organization_id.is_(None)
+                        & (Course.status == CourseStatus.PUBLISHED)
+                    ),
+                )
+            )
+        else:
+            query = query.where(
+                or_(
+                    Course.organization_id.in_(organization_ids),
+                    Course.organization_id.is_(None),
+                )
+            )
+
+    result = await db.execute(query)
+    return result.scalars().first()
+
+
+async def get_version(db: AsyncSession, version_id: UUID) -> Optional[CourseVersion]:
     query = (
-        select(Course)
-        .where(Course.id == course_id)
+        select(CourseVersion)
+        .where(CourseVersion.id == version_id)
         .options(
-            selectinload(Course.versions)
-            .selectinload(CourseVersion.modules)
-            .selectinload(Module.lessons)
+            selectinload(CourseVersion.course),
+            selectinload(CourseVersion.modules).selectinload(Module.lessons),
         )
     )
     result = await db.execute(query)
     return result.scalars().first()
+
 
 async def create_module(db: AsyncSession, version_id: str, module_in: ModuleCreate) -> Module:
     module = Module(
@@ -74,6 +162,7 @@ async def create_module(db: AsyncSession, version_id: str, module_in: ModuleCrea
     await db.commit()
     await db.refresh(module)
     return module
+
 
 async def create_lesson(db: AsyncSession, module_id: str, lesson_in: LessonCreate) -> Lesson:
     lesson = Lesson(
@@ -90,13 +179,79 @@ async def create_lesson(db: AsyncSession, module_id: str, lesson_in: LessonCreat
     await db.refresh(lesson)
     return lesson
 
+
+async def get_lesson_with_course(db: AsyncSession, lesson_id: UUID) -> Optional[Lesson]:
+    query = (
+        select(Lesson)
+        .where(Lesson.id == lesson_id)
+        .options(
+            selectinload(Lesson.module)
+            .selectinload(Module.course_version)
+            .selectinload(CourseVersion.course)
+        )
+    )
+    result = await db.execute(query)
+    return result.scalars().first()
+
+
+async def get_lesson_completion(
+    db: AsyncSession, user_id: UUID, lesson_id: UUID
+) -> Optional[LessonCompletion]:
+    query = select(LessonCompletion).where(
+        LessonCompletion.user_id == user_id,
+        LessonCompletion.lesson_id == lesson_id,
+    )
+    result = await db.execute(query)
+    return result.scalars().first()
+
+
+async def mark_lesson_complete(
+    db: AsyncSession, user_id: UUID, lesson_id: UUID
+) -> LessonCompletion:
+    existing = await get_lesson_completion(db, user_id, lesson_id)
+    if existing:
+        return existing
+
+    completion = LessonCompletion(user_id=user_id, lesson_id=lesson_id)
+    db.add(completion)
+    await db.commit()
+    await db.refresh(completion)
+    return completion
+
+
+async def count_lessons_for_version(db: AsyncSession, version_id: UUID) -> int:
+    query = (
+        select(func.count(Lesson.id))
+        .join(Module, Lesson.module_id == Module.id)
+        .where(Module.course_version_id == version_id)
+    )
+    result = await db.execute(query)
+    return int(result.scalar() or 0)
+
+
+async def count_user_completions_for_version(
+    db: AsyncSession, user_id: UUID, version_id: UUID
+) -> int:
+    query = (
+        select(func.count(LessonCompletion.id))
+        .join(Lesson, LessonCompletion.lesson_id == Lesson.id)
+        .join(Module, Lesson.module_id == Module.id)
+        .where(
+            LessonCompletion.user_id == user_id,
+            Module.course_version_id == version_id,
+        )
+    )
+    result = await db.execute(query)
+    return int(result.scalar() or 0)
+
+
 async def issue_certification(
     db: AsyncSession,
     user_id: UUID,
     course_version_id: UUID,
-    score: float = 100.0,
 ) -> Certification:
-    # Check if already certified for this version
+    # Certificação só é criada pelo backend após validação de elegibilidade.
+    # A nota é derivada da conclusão completa, nunca de entrada do cliente.
     query = select(Certification).where(
         Certification.user_id == user_id,
         Certification.course_version_id == course_version_id,
@@ -110,12 +265,13 @@ async def issue_certification(
         user_id=user_id,
         course_version_id=course_version_id,
         status=CertificationStatus.VALID,
-        score=score,
+        score=100.0,
     )
     db.add(cert)
     await db.commit()
     await db.refresh(cert)
     return cert
+
 
 async def get_user_certifications(db: AsyncSession, user_id: UUID) -> List[dict]:
     query = (
@@ -143,11 +299,12 @@ async def get_user_certifications(db: AsyncSession, user_id: UUID) -> List[dict]
         })
     return output
 
+
 async def seed_default_courses(db: AsyncSession):
     """Seed initial foundational courses for OPERAN Academy if empty."""
     res = await db.execute(select(Course))
     if res.scalars().first():
-        return # already seeded
+        return  # already seeded
 
     # 1. Trilha 01: Formação OPERAN Base
     course1 = Course(

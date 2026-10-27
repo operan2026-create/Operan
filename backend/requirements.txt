@@ -11,3 +11,5 @@ PyJWT
 greenlet
 email-validator
 passlib[argon2]
+python-multipart
+redis

@@ -4,16 +4,18 @@ import { GraduationCap, ArrowRight, BookOpen, Clock, ShieldCheck } from 'lucide-
 import api from '../api/client'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
+import { useArea } from '../hooks/useArea'
 import type { Course } from '../types'
 
 export function StudentAcademyPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const area = useArea()
   const isInsideAdmin = location.pathname.startsWith('/admin')
   const passportPath = isInsideAdmin ? '/admin/academy' : '/participante'
 
   const { data: courses, isLoading } = useQuery({
-    queryKey: ['student-courses'],
+    queryKey: ['student-courses', area],
     queryFn: () => api.get<Course[]>('/academy/courses?published_only=true').then(r => r.data),
   })
 

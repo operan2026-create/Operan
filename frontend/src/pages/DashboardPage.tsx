@@ -26,7 +26,7 @@ export function DashboardPage() {
   })
 
   const { data: certs } = useQuery({
-    queryKey: ['my-certifications'],
+    queryKey: ['my-certifications', 'admin'],
     queryFn: () => api.get<Certification[]>('/academy/my-certifications').then(r => r.data),
   })
 

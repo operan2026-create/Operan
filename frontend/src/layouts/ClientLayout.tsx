@@ -7,6 +7,8 @@ import {
   Building2,
   LogOut,
   ShieldCheck,
+  MailPlus,
+  UserRound,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -15,6 +17,8 @@ const clientNav = [
   { to: '/cliente/locations', icon: MapPin, label: 'Locais de Aplicação' },
   { to: '/cliente/missions', icon: Target, label: 'Missões & Operações' },
   { to: '/cliente/network', icon: Users, label: 'Rede de Colaboradores' },
+  { to: '/cliente/invitations', icon: MailPlus, label: 'Convites' },
+  { to: '/cliente/participants', icon: UserRound, label: 'Participantes' },
 ]
 
 export function ClientLayout() {

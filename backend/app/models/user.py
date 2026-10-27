@@ -24,6 +24,8 @@ class User(Base):
     
     status = Column(Enum(UserStatus), default=UserStatus.PENDING, nullable=False)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
+    # Reserved for a future MFA flow. It is not read or written by the current
+    # authentication code and must be encrypted before any real secret is stored.
     mfa_secret = Column(String, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())

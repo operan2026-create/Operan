@@ -9,11 +9,14 @@ class CryptoManager:
     Here we mock the KEK retrieval using an environment variable or a locally generated key.
     """
     
-    def __init__(self, kek_base64: str = None):
-        # MOCK: Fallback to a random key if not provided (NOT for production!)
+    def __init__(self, kek_base64: str):
+        # A chave deve vir de configuracao explicita. Nunca gerar uma chave
+        # aleatoria implicitamente: isso tornaria dados existentes ilegiveis.
         if not kek_base64:
-            kek_base64 = base64.b64encode(AESGCM.generate_key(bit_length=256)).decode('utf-8')
+            raise ValueError("CRYPTO_KEY is required to initialise encryption.")
         self._kek = base64.b64decode(kek_base64)
+        if len(self._kek) != 32:
+            raise ValueError("CRYPTO_KEY must decode to exactly 32 bytes (AES-256).")
         self.aesgcm = AESGCM(self._kek)
 
     def encrypt_data(self, data: str) -> str:
@@ -26,6 +29,14 @@ class CryptoManager:
         ciphertext = self.aesgcm.encrypt(nonce, encoded_data, None)
         # Store nonce prepended to ciphertext, then base64 encode
         return base64.b64encode(nonce + ciphertext).decode('utf-8')
+
+    def encrypt_bytes(self, data: bytes) -> bytes:
+        nonce = os.urandom(12)
+        return nonce + self.aesgcm.encrypt(nonce, data, None)
+
+    def decrypt_bytes(self, payload: bytes) -> bytes:
+        nonce = payload[:12]
+        return self.aesgcm.decrypt(nonce, payload[12:], None)
 
     def decrypt_data(self, encrypted_data_b64: str) -> str:
         """

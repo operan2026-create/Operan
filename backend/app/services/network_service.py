@@ -1,10 +1,23 @@
-import hashlib
+from app.security.blind_index import cpf_index
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
-from app.models.network import Location, Professional, LocationStatus, ProfessionalAvailability
+from app.models.network import Location, Professional, LocationStatus
+from app.models.participant import (
+    JourneyEnrollment,
+    JourneyStatus,
+    JourneyType,
+    ParticipantClientLink,
+    ParticipantClientLinkStatus,
+    ProfessionalQualification,
+    QualificationStatus,
+)
+from app.models.user import User, UserStatus
 from app.schemas.network import LocationCreate, ProfessionalCreate
 from app.security.encryption import crypto_manager
 
@@ -31,25 +44,42 @@ async def create_location(db: AsyncSession, loc_in: LocationCreate) -> Location:
     await db.refresh(loc)
     return loc
 
+async def get_location(db: AsyncSession, location_id: UUID) -> Optional[Location]:
+    res = await db.execute(select(Location).where(Location.id == location_id))
+    return res.scalars().first()
+
+
 async def list_locations(
     db: AsyncSession,
     city: Optional[str] = None,
     state: Optional[str] = None,
     status: Optional[LocationStatus] = None,
     organization_ids: Optional[List[UUID]] = None,
+    public_only: bool = False,
 ) -> List[Location]:
     query = select(Location).order_by(Location.created_at.desc())
     if city:
         query = query.where(Location.city.ilike(f"%{city}%"))
     if state:
         query = query.where(Location.state == state.upper())
-    if status:
+    if public_only:
+        # Participantes veem apenas locais já confirmados para operação.
+        query = query.where(Location.status == LocationStatus.CONFIRMADO)
+    elif status:
         query = query.where(Location.status == status)
     if organization_ids is not None:
         query = query.where(Location.organization_id.in_(organization_ids))
 
     res = await db.execute(query)
     return list(res.scalars().all())
+
+
+# Transições permitidas para validação de locais. Reversões exigem fluxo próprio.
+LOCATION_TRANSITIONS = {
+    LocationStatus.DECLARADO: {LocationStatus.VISTORIADO},
+    LocationStatus.VISTORIADO: {LocationStatus.CONFIRMADO},
+    LocationStatus.CONFIRMADO: set(),
+}
 
 
 async def update_location_status(
@@ -68,7 +98,7 @@ async def update_location_status(
 
 async def create_professional(db: AsyncSession, prof_in: ProfessionalCreate) -> Professional:
     cpf_clean = "".join(filter(str.isdigit, prof_in.cpf))
-    cpf_hash = hashlib.sha256(cpf_clean.encode()).hexdigest()
+    cpf_hash = cpf_index(cpf_clean)
 
     prof = Professional(
         user_id=prof_in.user_id,
@@ -91,15 +121,74 @@ async def list_professionals(
     db: AsyncSession,
     city: Optional[str] = None,
     state: Optional[str] = None,
+    organization_ids: Optional[list[UUID]] = None,
+    function_name: Optional[str] = None,
 ) -> List[Professional]:
-    query = select(Professional).order_by(Professional.reputation_score.desc())
-    if city:
-        query = query.where(Professional.city.ilike(f"%{city}%"))
-    if state:
-        query = query.where(Professional.state == state.upper())
+    active_users = select(User.id).where(User.status == UserStatus.ACTIVE)
+    active_professionals = select(JourneyEnrollment.user_id).where(
+        JourneyEnrollment.journey_type == JourneyType.PROFESSIONALS,
+        JourneyEnrollment.status == JourneyStatus.ACTIVE,
+    )
+    query = (
+        select(Professional)
+        .options(selectinload(Professional.user))
+        .where(
+            Professional.user_id.in_(active_users),
+            Professional.user_id.in_(active_professionals),
+        )
+        .order_by(Professional.reputation_score.desc())
+    )
+    if organization_ids is not None:
+        if not organization_ids:
+            return []
+        linked_user_ids = select(ParticipantClientLink.user_id).where(
+            ParticipantClientLink.organization_id.in_(organization_ids),
+            ParticipantClientLink.status == ParticipantClientLinkStatus.ACTIVE,
+        )
+        query = query.where(Professional.user_id.in_(linked_user_ids))
+    if function_name:
+        valid_users = select(ProfessionalQualification.user_id).where(
+            ProfessionalQualification.function_name == function_name.upper(),
+            ProfessionalQualification.status == QualificationStatus.ACTIVE,
+            or_(
+                ProfessionalQualification.expires_at.is_(None),
+                ProfessionalQualification.expires_at > datetime.now(timezone.utc),
+            ),
+        )
+        query = query.where(Professional.user_id.in_(valid_users))
 
     res = await db.execute(query)
-    return list(res.scalars().all())
+    rows = list(res.scalars().all())
+    if city:
+        normalized_city = city.strip().lower()
+        rows = [row for row in rows if normalized_city in (row.city or "").lower()]
+    if state:
+        normalized_state = state.strip().upper()
+        rows = [row for row in rows if (row.state or "").upper() == normalized_state]
+    return rows
+
+
+async def qualifications_for_users(
+    db: AsyncSession, user_ids: list[UUID]
+) -> dict[UUID, list[str]]:
+    if not user_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(ProfessionalQualification).where(
+                ProfessionalQualification.user_id.in_(user_ids),
+                ProfessionalQualification.status == QualificationStatus.ACTIVE,
+                or_(
+                    ProfessionalQualification.expires_at.is_(None),
+                    ProfessionalQualification.expires_at > datetime.now(timezone.utc),
+                ),
+            )
+        )
+    ).scalars().all()
+    output: dict[UUID, list[str]] = {}
+    for row in rows:
+        output.setdefault(row.user_id, []).append(row.function_name)
+    return output
 
 async def seed_default_network(db: AsyncSession):
     res = await db.execute(select(Location))

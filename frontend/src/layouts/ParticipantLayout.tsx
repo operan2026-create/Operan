@@ -3,22 +3,30 @@ import {
   ShieldCheck,
   GraduationCap,
   Target,
-  User,
+  UserRound,
   LogOut,
   Star,
+  School,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
-const participantNav = [
-  { to: '/participante', icon: ShieldCheck, label: 'Passaporte Operacional', end: true },
-  { to: '/participante/academy', icon: GraduationCap, label: 'Academy & Cursos' },
-  { to: '/participante/missions', icon: Target, label: 'Minhas Missões' },
-]
-
 export function ParticipantLayout() {
-  const { user, logout } = useAuth()
+  const { user, logout, isProfessional, isRepresentative } = useAuth()
+  const participantNav = [
+    { to: '/participante', icon: ShieldCheck, label: 'Passaporte Global', end: true },
+    ...(isProfessional
+      ? [
+          { to: '/participante/academy', icon: GraduationCap, label: 'Academy & Cursos', end: false },
+          { to: '/participante/missions', icon: Target, label: 'Missoes & Candidaturas', end: false },
+        ]
+      : []),
+    ...(isRepresentative
+      ? [{ to: '/participante/escolas', icon: School, label: 'Minhas Escolas', end: false }]
+      : []),
+    { to: '/participante/conta', icon: UserRound, label: 'Conta & Documentos', end: false },
+  ]
   const profName = user?.professional?.full_name || user?.email?.split('@')[0] || 'Colaborador'
-  const repScore = user?.professional?.reputation_score || 98.5
+  const repScore = user?.professional?.reputation_score
 
   return (
     <div className="min-h-screen bg-gray-950 flex">
@@ -64,7 +72,7 @@ export function ParticipantLayout() {
           <div className="px-3.5 py-3 mb-2 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-between">
             <div>
               <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Confiabilidade</p>
-              <p className="text-sm font-black text-violet-400">{repScore} <span className="text-[10px] text-gray-400 font-normal">/100</span></p>
+              <p className="text-sm font-black text-violet-400">{repScore !== undefined ? repScore.toFixed(1) : '-'} <span className="text-[10px] text-gray-400 font-normal">/100</span></p>
             </div>
             <div className="w-7 h-7 bg-violet-500/10 rounded-lg flex items-center justify-center">
               <Star className="w-3.5 h-3.5 text-violet-400 fill-violet-400/40" />

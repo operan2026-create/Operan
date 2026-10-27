@@ -15,10 +15,14 @@ async def create_role(
     db: AsyncSession = Depends(get_db),
     context: UserContext = Depends(require_admin),
 ):
-    existing = await db.execute(select(Role).where(Role.name == role_in.name))
+    name = role_in.name.strip().upper()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nome de papel inválido.")
+    existing = await db.execute(select(Role).where(Role.name == name))
     if existing.scalars().first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role já existe.")
-    role = Role(name=role_in.name, description=role_in.description, is_system=role_in.is_system)
+    # is_system is a reserved marker; it must never come from API input.
+    role = Role(name=name, description=role_in.description, is_system=False)
     db.add(role)
     await db.commit()
     await db.refresh(role)

@@ -5,6 +5,9 @@ import api from '../api/client'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { useArea } from '../hooks/useArea'
+import { useAuth } from '../hooks/useAuth'
+import { LocationWorkflowModal } from '../components/LocationWorkflowModal'
 import type { Location } from '../types'
 
 const statusConfig = {
@@ -30,9 +33,15 @@ const statusConfig = {
 
 export function LocationsPage() {
   const queryClient = useQueryClient()
+  const area = useArea()
+  const { user } = useAuth()
+  const isAdmin = area === 'admin'
+  const canCreate = isAdmin || user?.roles?.includes('CLIENT_ADMIN')
+  const canDecide = isAdmin || user?.roles?.includes('CLIENT_ADMIN')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [workflowLocation, setWorkflowLocation] = useState<Location | null>(null)
 
   // Form State
   const [name, setName] = useState('')
@@ -45,14 +54,14 @@ export function LocationsPage() {
   const [hasAirConditioning, setHasAirConditioning] = useState(true)
 
   const { data: locations, isLoading } = useQuery({
-    queryKey: ['locations'],
+    queryKey: ['locations', area],
     queryFn: () => api.get<Location[]>('/locations').then(r => r.data),
   })
 
   const createMutation = useMutation({
     mutationFn: (newLoc: any) => api.post('/locations', newLoc),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locations'] })
+      queryClient.invalidateQueries({ queryKey: ['locations', area] })
       setIsModalOpen(false)
       setName('')
       setAddress('')
@@ -64,7 +73,7 @@ export function LocationsPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/locations/${id}/status`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locations'] })
+      queryClient.invalidateQueries({ queryKey: ['locations', area] })
     },
   })
 
@@ -102,9 +111,11 @@ export function LocationsPage() {
             Rede territorial mapeada, capacidade de salas, infraestrutura física e validação em 3 níveis
           </p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" /> Cadastrar Prédio / Local
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" /> Cadastrar Prédio / Local
+          </Button>
+        )}
       </div>
 
       {/* Filtros */}
@@ -198,23 +209,23 @@ export function LocationsPage() {
 
                 {/* Transição de Estado da Validação */}
                 <div className="pt-4 border-t border-gray-800 mt-5 flex items-center justify-between gap-2">
-                  {loc.status === 'DECLARADO' && (
+                  {canDecide && loc.status === 'DECLARADO' && (
                     <Button
                       size="sm"
                       variant="secondary"
                       className="w-full text-blue-400 hover:text-blue-300 border border-blue-500/30"
                       onClick={() => statusMutation.mutate({ id: loc.id, status: 'VISTORIADO' })}
                     >
-                      Aprovar Vistoria (🔵 Vistoriado)
+                      Aprovar Vistoria (Vistoriado)
                     </Button>
                   )}
-                  {loc.status === 'VISTORIADO' && (
+                  {canDecide && loc.status === 'VISTORIADO' && (
                     <Button
                       size="sm"
                       className="w-full bg-green-600 hover:bg-green-700 text-white"
                       onClick={() => statusMutation.mutate({ id: loc.id, status: 'CONFIRMADO' })}
                     >
-                      Confirmar p/ Operação (🟢 Confirmado)
+                      Confirmar p/ Operação (Confirmado)
                     </Button>
                   )}
                   {loc.status === 'CONFIRMADO' && (
@@ -223,11 +234,24 @@ export function LocationsPage() {
                       Pronto para Operação
                     </span>
                   )}
+                  {!canDecide && loc.status !== 'CONFIRMADO' && (
+                    <span className="text-xs text-yellow-400 font-semibold flex items-center gap-1.5 w-full justify-center py-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      Em validação pela OPERAN
+                    </span>
+                  )}
                 </div>
               </Card>
             )
           })}
         </div>
+      )}
+
+      {workflowLocation && (
+        <LocationWorkflowModal
+          location={workflowLocation}
+          onClose={() => setWorkflowLocation(null)}
+        />
       )}
 
       {/* Modal Novo Local */}

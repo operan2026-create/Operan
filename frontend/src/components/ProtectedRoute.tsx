@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
 interface ProtectedRouteProps {
-  allowedRoles?: Array<'ADMIN' | 'CLIENT' | 'PARTICIPANT'>
+  allowedRoles?: Array<'ADMIN' | 'CLIENT' | 'PARTICIPANT' | 'USER'>
 }
 
 export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
@@ -31,7 +31,10 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
     if (primaryRole === 'CLIENT') {
       return <Navigate to="/cliente" replace />
     }
-    return <Navigate to="/participante" replace />
+    if (primaryRole === 'PARTICIPANT') {
+      return <Navigate to="/participante" replace />
+    }
+    return <Navigate to="/sem-acesso" replace />
   }
 
   return <Outlet />

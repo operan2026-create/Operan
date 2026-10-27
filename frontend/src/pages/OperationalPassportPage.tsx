@@ -3,17 +3,27 @@ import { ShieldCheck, Award, CheckCircle2, Calendar, Star, UserCheck, Shield, Sp
 import api from '../api/client'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../hooks/useAuth'
-import type { Certification } from '../types'
+import { useArea } from '../hooks/useArea'
+import type { Certification, Mission } from '../types'
 
 export function OperationalPassportPage() {
   const { user } = useAuth()
+  const area = useArea()
 
   const { data: certs, isLoading } = useQuery({
-    queryKey: ['my-certifications'],
+    queryKey: ['my-certifications', area],
     queryFn: () => api.get<Certification[]>('/academy/my-certifications').then(r => r.data),
   })
 
+  const { data: myMissions } = useQuery({
+    queryKey: ['passport-missions', area],
+    queryFn: () => api.get<Mission[]>('/missions?only_my=true').then(r => r.data).catch(() => []),
+  })
+
   const verifiedCertsCount = certs?.filter(c => c.status === 'VALID').length || 0
+  const completedMissions = myMissions?.filter(m => m.status === 'COMPLETED').length || 0
+  const reputation = user?.professional?.reputation_score
+  const availability = user?.professional?.availability_status
 
   return (
     <div>
@@ -46,7 +56,10 @@ export function OperationalPassportPage() {
           <div className="bg-gray-900/80 backdrop-blur-md border border-gray-800 rounded-2xl px-6 py-4 flex items-center gap-4">
             <div>
               <p className="text-xs text-gray-500 font-medium">Índice de Confiabilidade</p>
-              <p className="text-2xl font-black text-violet-400">98.5 <span className="text-sm font-normal text-gray-400">/100</span></p>
+              <p className="text-2xl font-black text-violet-400">
+                {reputation !== undefined ? reputation.toFixed(1) : "-"}
+                <span className="text-sm font-normal text-gray-400"> /100</span>
+              </p>
             </div>
             <div className="w-10 h-10 bg-violet-500/10 rounded-xl flex items-center justify-center">
               <Star className="w-5 h-5 text-violet-400 fill-violet-400/30" />
@@ -61,16 +74,18 @@ export function OperationalPassportPage() {
             <p className="text-2xl font-bold text-white mt-0.5">{verifiedCertsCount}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Nível Operacional</p>
-            <p className="text-2xl font-bold text-violet-400 mt-0.5">Nível 1</p>
+            <p className="text-xs text-gray-500">Cursos Concluídos</p>
+            <p className="text-2xl font-bold text-violet-400 mt-0.5">{certs?.length || 0}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Missões Concluídas</p>
-            <p className="text-2xl font-bold text-white mt-0.5">0</p>
+            <p className="text-2xl font-bold text-white mt-0.5">{completedMissions}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Disponibilidade</p>
-            <p className="text-2xl font-bold text-green-400 mt-0.5">Ativo na Rede</p>
+            <p className="text-2xl font-bold text-green-400 mt-0.5">
+              {availability === "AVAILABLE" ? "Disponível" : availability === "IN_MISSION" ? "Em missão" : availability === "UNAVAILABLE" ? "Indisponível" : "-"}
+            </p>
           </div>
         </div>
       </div>
@@ -151,7 +166,7 @@ export function OperationalPassportPage() {
                   <p className="text-xs text-gray-400">Habilitado via Academy</p>
                 </div>
               </div>
-              <span className="text-xs font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">Apto</span>
+              <span className="text-xs font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">{verifiedCertsCount > 0 ? 'Apto' : 'Pendente'}</span>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-gray-800/60 border border-gray-700/40">
@@ -164,7 +179,7 @@ export function OperationalPassportPage() {
                   <p className="text-xs text-gray-400">Ética e LGPD verificadas</p>
                 </div>
               </div>
-              <span className="text-xs font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">Apto</span>
+              <span className="text-xs font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">{verifiedCertsCount > 0 ? 'Apto' : 'Pendente'}</span>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-gray-800/20 border border-gray-800/60 opacity-60">

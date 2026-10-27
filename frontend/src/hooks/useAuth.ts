@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../api/client'
+import { queryClient } from '../lib/queryClient'
 import type { User, AuthResponse } from '../types'
 
 export function useAuth() {
@@ -30,6 +31,7 @@ export function useAuth() {
 
   const login = async (email: string, password: string): Promise<AuthResponse> => {
     const res = await api.post<AuthResponse>('/auth/login', { email, password })
+    queryClient.clear()
     localStorage.setItem('operan_token', res.data.access_token)
     setUser(res.data.user)
     return res.data
@@ -38,13 +40,21 @@ export function useAuth() {
   const logout = () => {
     localStorage.removeItem('operan_token')
     setUser(null)
+    queryClient.clear()
     window.location.href = '/login'
   }
 
-  const primaryRole = user?.primary_role || 'PARTICIPANT'
+  const primaryRole: 'ADMIN' | 'CLIENT' | 'PARTICIPANT' | 'USER' = user?.primary_role || 'USER'
   const isAdmin = primaryRole === 'ADMIN'
   const isClient = primaryRole === 'CLIENT'
   const isParticipant = primaryRole === 'PARTICIPANT'
+  const journeys = user?.journeys ?? []
+  const isProfessional = journeys.some(
+    (journey) => journey.journey_type === 'PROFESSIONALS' && journey.status === 'ACTIVE'
+  )
+  const isRepresentative = journeys.some(
+    (journey) => journey.journey_type === 'LOCATIONS' && journey.status === 'ACTIVE'
+  )
 
   return {
     user,
@@ -55,6 +65,9 @@ export function useAuth() {
     isAdmin,
     isClient,
     isParticipant,
+    journeys,
+    isProfessional,
+    isRepresentative,
     refetchUser: fetchCurrentUser,
   }
 }

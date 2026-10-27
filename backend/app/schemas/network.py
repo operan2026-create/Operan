@@ -1,5 +1,5 @@
 from pydantic import BaseModel, UUID4, ConfigDict
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from app.models.network import LocationStatus, ProfessionalAvailability
 
@@ -46,6 +46,8 @@ class ProfessionalCreate(ProfessionalBase):
 class ProfessionalResponse(ProfessionalBase):
     id: UUID4
     user_id: UUID4
+    public_id: Optional[str] = None
+    qualifications: List[str] = []
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

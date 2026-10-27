@@ -10,12 +10,10 @@ export function AcademyHubPage() {
   const [activeTab, setActiveTab] = useState<'learn' | 'passport' | 'manage'>('learn')
   const [copied, setCopied] = useState(false)
 
-  const inviteLink = `${window.location.origin}/cadastro-colaborador`
+  const inviteLink = '/admin/invitations'
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(inviteLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2500)
+    window.location.href = inviteLink
   }
 
   return (
@@ -38,21 +36,21 @@ export function AcademyHubPage() {
         <div className="flex items-center gap-2 bg-gray-900 border border-violet-600/30 rounded-xl px-3 py-2">
           <Share2 className="w-4 h-4 text-violet-400 shrink-0" />
           <div className="text-xs">
-            <span className="text-gray-400 block font-medium">Link de Cadastro de Colaborador</span>
+            <span className="text-gray-400 block font-medium">Entrada por convite</span>
             <span className="text-gray-500 font-mono truncate max-w-[220px] block">
-              /cadastro-colaborador
+              /admin/invitations
             </span>
           </div>
           <Button size="sm" variant={copied ? 'secondary' : 'primary'} onClick={handleCopyLink} className="ml-2">
             {copied ? (
               <>
                 <Check className="w-3.5 h-3.5 mr-1 text-green-400" />
-                Copiado!
+                Abrindo...
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 mr-1" />
-                Copiar Link
+                Gerenciar convites
               </>
             )}
           </Button>

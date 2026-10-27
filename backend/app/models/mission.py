@@ -27,6 +27,7 @@ class Mission(Base):
     mission_type = Column(Enum(MissionType), default=MissionType.VISTORIA, nullable=False)
     status = Column(Enum(MissionStatus), default=MissionStatus.OPEN, nullable=False)
     
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
     assigned_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
@@ -36,6 +37,7 @@ class Mission(Base):
     deadline = Column(DateTime(timezone=True), nullable=True)
     
     checklist = Column(JSON, nullable=True)
+    required_function = Column(String(40), nullable=True, index=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

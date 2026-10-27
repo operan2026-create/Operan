@@ -1,18 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
 from pydantic import BaseModel, EmailStr
-import hashlib
 
 from app.core.deps import get_db, get_current_user_context, UserContext
-from app.models.user import User, UserStatus
-from app.models.network import Professional, ProfessionalAvailability
+from app.models.user import UserStatus
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.collaborator import CollaboratorRegisterRequest, CollaboratorRegisterResponse
-from app.services import user_service
+from app.services import audit_service, user_service
+from app.services.login_limiter import client_ip, login_limiter
 from app.security.jwt import create_access_token
-from app.security.encryption import crypto_manager
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -27,24 +23,23 @@ class TokenResponse(BaseModel):
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Public self-registration.
+
+    The account always starts as PENDING and receives the PARTICIPANT role.
+    Privileged roles are never granted from public input, and the first user
+    does not become an administrator automatically.
+    """
     try:
         user = await user_service.create_user(db, email=user_in.email, password=user_in.password)
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail="Não foi possível concluir o cadastro com os dados informados."
         )
-    user.status = UserStatus.ACTIVE
-    await db.commit()
-    await db.refresh(user)
 
-    # If first user in database, promote to ADMIN; otherwise, PARTICIPANT
-    count_res = await db.execute(select(func.count(User.id)))
-    total_users = count_res.scalar() or 1
-    if total_users == 1:
-        await user_service.assign_role_to_user(db, user.id, "ADMIN")
-    else:
-        await user_service.assign_role_to_user(db, user.id, "PARTICIPANT")
+    # New accounts stay PENDING until an administrator activates them.
+    await user_service.assign_role_to_user(db, user.id, "PARTICIPANT")
 
     context = await get_current_user_context(current_user=user, db=db)
     user_resp = context.to_user_response()
@@ -53,74 +48,56 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/register-collaborator", response_model=CollaboratorRegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register_collaborator(req: CollaboratorRegisterRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Public registration endpoint for collaborators (sent via link/invite).
-    Creates User, assigns PARTICIPANT role, and encrypted Professional profile.
-    """
-    # 1. Create base user account
-    try:
-        user = await user_service.create_user(db, email=req.email, password=req.password)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    user.status = UserStatus.ACTIVE
-
-    # 2. Check CPF duplication
-    cpf_clean = "".join(filter(str.isdigit, req.cpf))
-    cpf_hash = hashlib.sha256(cpf_clean.encode()).hexdigest()
-
-    res = await db.execute(select(Professional).where(Professional.cpf_hash == cpf_hash))
-    if res.scalars().first():
-        await db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este CPF já está cadastrado na rede OPERAN.")
-
-    # 3. Create professional profile with AES-256-GCM encryption
-    prof = Professional(
-        user_id=user.id,
-        full_name=req.full_name,
-        cpf_hash=cpf_hash,
-        cpf_encrypted=crypto_manager.encrypt_data(cpf_clean),
-        phone_encrypted=crypto_manager.encrypt_data(req.phone),
-        city=req.city,
-        state=req.state.upper(),
-        operational_radius_km=req.operational_radius_km,
-        availability_status=ProfessionalAvailability.AVAILABLE,
-        reputation_score=100.0,
+    """Cadastro publico desativado: a entrada ocorre apenas por convite."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Cadastro publico desativado. Solicite um convite da escola ou da administracao OPERAN.",
     )
-    db.add(prof)
-    await db.commit()
-    await db.refresh(prof)
-    await db.refresh(user)
 
-    # 4. Assign PARTICIPANT role
-    await user_service.assign_role_to_user(db, user.id, "PARTICIPANT")
-
-    token = create_access_token(data={"sub": user.public_id, "role": "PARTICIPANT"})
-    return CollaboratorRegisterResponse(
-        access_token=token,
-        token_type="bearer",
-        user_id=str(user.id),
-        public_id=user.public_id,
-        full_name=prof.full_name,
-        city=prof.city,
-        state=prof.state,
-        status="ACTIVE",
-    )
 
 @router.post("/login", response_model=TokenResponse)
-async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = await user_service.authenticate_user(db, email=credentials.email, password=credentials.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="E-mail ou senha incorretos."
+async def login(
+    credentials: LoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    ip = client_ip(request)
+    account_hash = user_service.email_lookup_hash(credentials.email)
+
+    decision = await login_limiter.check(ip=ip, account_hash=account_hash)
+    if not decision.allowed:
+        audit_service.record(
+            db,
+            action="auth.login_blocked",
+            entity_type="User",
+            actor=None,
+            details={"scope": decision.reason},
+            request=request,
         )
-    if user.status != UserStatus.ACTIVE:
+        await db.commit()
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Usuário não está ativo (status: {user.status.value})"
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Muitas tentativas de acesso. Tente novamente em alguns instantes.",
+            headers={"Retry-After": str(max(1, decision.retry_after))},
         )
 
+    user = await user_service.authenticate_user(
+        db, email=credentials.email, password=credentials.password
+    )
+    if not user:
+        await login_limiter.record_failure(ip=ip, account_hash=account_hash)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="E-mail ou senha incorretos.",
+        )
+    if user.status != UserStatus.ACTIVE:
+        await login_limiter.record_failure(ip=ip, account_hash=account_hash)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Conta indisponivel. Procure o suporte da plataforma.",
+        )
+
+    await login_limiter.record_success(ip=ip, account_hash=account_hash)
     context = await get_current_user_context(current_user=user, db=db)
     user_resp = context.to_user_response()
     token = create_access_token(data={"sub": user.public_id, "role": context.primary_role})

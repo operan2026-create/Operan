@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Target, Plus, CheckCircle2, Clock, MapPin, DollarSign, ListChecks, ArrowRight, ShieldAlert } from 'lucide-react'
+import { Target, Plus, CheckCircle2, MapPin, ListChecks, ShieldAlert, UserPlus, Award, X } from 'lucide-react'
 import api from '../api/client'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import type { Mission, Location } from '../types'
+import { useArea } from '../hooks/useArea'
+import { useAuth } from '../hooks/useAuth'
+import { PROFESSIONAL_FUNCTIONS, professionalFunctionLabel } from '../lib/professionalFunctions'
+import type { Mission, MissionApplication, MissionInvitation, Professional, Location } from '../types'
 
 const typeBadges = {
   VISTORIA: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -17,28 +20,109 @@ const typeBadges = {
 
 export function MissionsPage() {
   const queryClient = useQueryClient()
+  const area = useArea()
+  const { user } = useAuth()
+  const canManage = area === 'admin' || user?.roles?.includes('CLIENT_ADMIN')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [missionType, setMissionType] = useState('VISTORIA')
+  const [requiredFunction, setRequiredFunction] = useState('')
   const [locationId, setLocationId] = useState('')
   const [city, setCity] = useState('')
   const [state, setState] = useState('DF')
   const [rewardAmount, setRewardAmount] = useState(180)
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
+  const [decisionNotes, setDecisionNotes] = useState('')
+  const [inviteMission, setInviteMission] = useState<Mission | null>(null)
+  const [inviteState, setInviteState] = useState('')
+  const [inviteCity, setInviteCity] = useState('')
+  const [inviteFunction, setInviteFunction] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
+  const [inviteFeedback, setInviteFeedback] = useState('')
+  const [inviteError, setInviteError] = useState('')
 
   const { data: missions, isLoading } = useQuery({
-    queryKey: ['missions'],
+    queryKey: ['missions', area],
     queryFn: () => api.get<Mission[]>('/missions').then(r => r.data),
   })
 
   const { data: locations } = useQuery({
-    queryKey: ['locations'],
+    queryKey: ['locations', area],
     queryFn: () => api.get<Location[]>('/locations').then(r => r.data),
   })
+
+  const { data: applications, isLoading: applicationsLoading } = useQuery({
+    queryKey: ['mission-applications', selectedMission?.id],
+    queryFn: () =>
+      api
+        .get<MissionApplication[]>(`/missions/${selectedMission?.id}/applications`)
+        .then(r => r.data),
+    enabled: Boolean(selectedMission?.id && canManage),
+  })
+
+  const { data: inviteProfessionals, isLoading: inviteProfessionalsLoading } = useQuery({
+    queryKey: ['invite-professionals', inviteMission?.id, inviteState, inviteCity, inviteFunction],
+    queryFn: () =>
+      api
+        .get<Professional[]>('/professionals', {
+          params: {
+            state: inviteState || undefined,
+            city: inviteCity || undefined,
+            function: inviteFunction || undefined,
+          },
+        })
+        .then(r => r.data),
+    enabled: Boolean(inviteMission?.id && canManage),
+  })
+
+  const { data: missionInvitations } = useQuery({
+    queryKey: ['mission-invitations', inviteMission?.id],
+    queryFn: () =>
+      api
+        .get<MissionInvitation[]>(`/missions/${inviteMission?.id}/invitations`)
+        .then(r => r.data),
+    enabled: Boolean(inviteMission?.id && canManage),
+  })
+
+  const inviteMutation = useMutation({
+    mutationFn: (userId: string) =>
+      api.post(`/missions/${inviteMission?.id}/invitations`, {
+        user_ids: [userId],
+        message: inviteMessage || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mission-invitations', inviteMission?.id] })
+      setInviteFeedback('Convite enviado. O profissional vera na area de missoes.')
+      setInviteError('')
+    },
+    onError: (error: any) => {
+      setInviteError(
+        error?.response?.data?.detail || 'Nao foi possivel enviar o convite.'
+      )
+      setInviteFeedback('')
+    },
+  })
+
+  const openInviteModal = (mission: Mission) => {
+    setInviteMission(mission)
+    setInviteState(mission.state || '')
+    setInviteCity(mission.city || '')
+    setInviteFunction(mission.required_function || '')
+    setInviteMessage('')
+    setInviteFeedback('')
+    setInviteError('')
+  }
+
+  const invitedUserIds = new Set(
+    (missionInvitations || [])
+      .filter(invite => invite.status === 'INVITED' || invite.status === 'ACCEPTED')
+      .map(invite => invite.user_id)
+  )
 
   const createMutation = useMutation({
     mutationFn: (newMission: any) => api.post('/missions', newMission),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['missions'] })
+      queryClient.invalidateQueries({ queryKey: ['missions', area] })
       setIsModalOpen(false)
       setTitle('')
       setCity('')
@@ -49,7 +133,20 @@ export function MissionsPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/missions/${id}/status`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['missions'] })
+      queryClient.invalidateQueries({ queryKey: ['missions', area] })
+    },
+  })
+
+  const decideMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'SELECTED' | 'REJECTED' }) =>
+      api.patch(`/missions/applications/${id}/decision`, {
+        status,
+        notes: decisionNotes || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mission-applications', selectedMission?.id] })
+      queryClient.invalidateQueries({ queryKey: ['missions', area] })
+      setDecisionNotes('')
     },
   })
 
@@ -58,6 +155,7 @@ export function MissionsPage() {
     createMutation.mutate({
       title,
       mission_type: missionType,
+      required_function: requiredFunction || undefined,
       location_id: locationId || undefined,
       city,
       state,
@@ -83,9 +181,11 @@ export function MissionsPage() {
             Despache vistorias, captações de novos prédios e reconfirmações pré-operação com checklists e remuneração
           </p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" /> Despachar Nova Missão
-        </Button>
+        {canManage && (
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" /> Despachar Nova Missão
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -104,9 +204,13 @@ export function MissionsPage() {
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                     m.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' :
                     m.status === 'IN_PROGRESS' ? 'bg-yellow-500/20 text-yellow-400' :
+                    m.status === 'CANCELLED' ? 'bg-red-500/20 text-red-400' :
                     'bg-gray-800 text-gray-300'
                   }`}>
-                    {m.status === 'OPEN' ? 'Aberta na Rede' : m.status === 'IN_PROGRESS' ? 'Em Execução' : 'Concluída'}
+                    {m.status === 'OPEN' ? 'Aberta na Rede' :
+                     m.status === 'ASSIGNED' ? 'Atribuída' :
+                     m.status === 'IN_PROGRESS' ? 'Em Execução' :
+                     m.status === 'COMPLETED' ? 'Concluída' : 'Cancelada'}
                   </span>
                 </div>
 
@@ -147,27 +251,24 @@ export function MissionsPage() {
                   </span>
                 </div>
 
-                {m.status === 'OPEN' && (
+                {canManage && (m.status === 'OPEN' || m.status === 'ASSIGNED' || m.status === 'IN_PROGRESS') && (
                   <Button
                     size="sm"
-                    onClick={() => statusMutation.mutate({ id: m.id, status: 'IN_PROGRESS' })}
+                    variant="secondary"
+                    loading={statusMutation.isPending}
+                    onClick={() => statusMutation.mutate({ id: m.id, status: 'CANCELLED' })}
                   >
-                    Aceitar Missão
-                  </Button>
-                )}
-                {m.status === 'IN_PROGRESS' && (
-                  <Button
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                    onClick={() => statusMutation.mutate({ id: m.id, status: 'COMPLETED' })}
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-1" />
-                    Finalizar
+                    Cancelar Missão
                   </Button>
                 )}
                 {m.status === 'COMPLETED' && (
                   <span className="text-xs font-bold text-green-400 flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4" /> Validada
+                  </span>
+                )}
+                {m.status === 'CANCELLED' && (
+                  <span className="text-xs font-bold text-red-400 flex items-center gap-1">
+                    <ShieldAlert className="w-4 h-4" /> Cancelada
                   </span>
                 )}
               </div>

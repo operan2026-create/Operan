@@ -1,6 +1,6 @@
-from pydantic import BaseModel, UUID4, EmailStr, ConfigDict
+from pydantic import BaseModel, UUID4, EmailStr, ConfigDict, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Optional, List
 from app.models.user import UserStatus
 
 class MembershipInfo(BaseModel):
@@ -29,7 +29,7 @@ class UserBase(BaseModel):
     status: UserStatus = UserStatus.PENDING
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 class UserResponse(UserBase):
     id: UUID4
@@ -42,6 +42,25 @@ class UserResponse(UserBase):
     roles: List[str] = []
     memberships: List[MembershipInfo] = []
     professional: Optional[ProfessionalInfo] = None
+    journeys: List[dict[str, Any]] = []
+    qualifications: List[dict[str, Any]] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserAdminResponse(BaseModel):
+    """Sanitized user view for platform administrators."""
+
+    id: UUID4
+    public_id: str
+    email: EmailStr
+    status: UserStatus
+    mfa_enabled: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserStatusUpdate(BaseModel):
+    status: UserStatus
 

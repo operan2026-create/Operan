@@ -12,6 +12,7 @@ class MissionBase(BaseModel):
     reward_amount: float = 150.00
     deadline: Optional[datetime] = None
     checklist: Optional[Any] = None
+    required_function: Optional[str] = None
 
 class MissionCreate(MissionBase):
     location_id: Optional[UUID4] = None

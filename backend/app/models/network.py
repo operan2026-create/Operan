@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, Integer, Boolean, Enum, DateTime, Foreign
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.security.encrypted_types import EncryptedString
 
 class LocationStatus(str, enum.Enum):
     DECLARADO = "DECLARADO"     # 🟡 Declarado pelo representante ou parceiro
@@ -51,13 +52,13 @@ class Professional(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     
-    full_name = Column(String, nullable=False)
+    full_name = Column(EncryptedString, nullable=False)
     cpf_hash = Column(String, unique=True, index=True, nullable=False)
     cpf_encrypted = Column(String, nullable=False)
     phone_encrypted = Column(String, nullable=False)
     
-    city = Column(String, nullable=False, index=True)
-    state = Column(String(2), nullable=False, index=True)
+    city = Column(EncryptedString, nullable=False)
+    state = Column(EncryptedString, nullable=False)
     operational_radius_km = Column(Integer, default=30, nullable=False)
     
     availability_status = Column(Enum(ProfessionalAvailability), default=ProfessionalAvailability.AVAILABLE, nullable=False)

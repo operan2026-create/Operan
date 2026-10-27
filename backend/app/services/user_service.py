@@ -3,7 +3,6 @@ User service: handles all business logic for User creation,
 lookup, and authentication. Keeps route handlers thin.
 """
 
-import hashlib
 import uuid
 from typing import Optional
 
@@ -11,13 +10,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.user import User, UserStatus
+from app.security.blind_index import email_index
 from app.security.encryption import crypto_manager
 from app.security.hashing import get_password_hash, verify_password
 
 
 def _hash_email(email: str) -> str:
-    """Returns a deterministic SHA-256 hex digest of the normalised email."""
-    return hashlib.sha256(email.lower().encode()).hexdigest()
+    """Returns the keyed blind index for the normalised e-mail."""
+    return email_index(email)
+
+
+def email_lookup_hash(email: str) -> str:
+    """Public accessor for the e-mail lookup hash (used by auth throttling)."""
+    return _hash_email(email)
+
+
+# Used to keep the timing of unknown-email logins close to known-email logins.
+_DUMMY_PASSWORD_HASH = get_password_hash("operan-timing-equalisation")
 
 
 def _generate_user_public_id() -> str:
@@ -68,7 +77,7 @@ async def get_user_by_email_hash(
     email: str,
 ) -> Optional[User]:
     """
-    Looks up a User by the SHA-256 hash of their email address.
+    Looks up a User by the keyed blind index of their email address.
 
     :param db: Async database session.
     :param email: Plain-text email (will be hashed internally).
@@ -94,6 +103,9 @@ async def authenticate_user(
     """
     user = await get_user_by_email_hash(db, email)
     if user is None:
+        # Perform a dummy verification so unknown e-mails are not trivially
+        # distinguishable by response time.
+        verify_password(password, _DUMMY_PASSWORD_HASH)
         return None
     if not verify_password(password, user.password_hash):
         return None

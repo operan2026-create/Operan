@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Optional
 from datetime import datetime
 from app.models.network import ProfessionalAvailability
@@ -6,7 +6,7 @@ from app.models.network import ProfessionalAvailability
 class CollaboratorRegisterRequest(BaseModel):
     # User Account info
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
     
     # Professional info
     full_name: str

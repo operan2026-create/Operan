@@ -4,6 +4,7 @@ import { ShieldCheck, UserCheck, Lock, CheckCircle2, ArrowRight, Sparkles, MapPi
 import api from '../api/client'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { getApiErrorMessage } from '../lib/errors'
 
 export function CollaboratorRegisterPage() {
   const navigate = useNavigate()
@@ -46,7 +47,7 @@ export function CollaboratorRegisterPage() {
       localStorage.setItem('operan_token', res.data.access_token)
       navigate('/participante/academy')
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Erro ao realizar cadastro. Verifique os dados e tente novamente.')
+      setError(getApiErrorMessage(err, 'Erro ao realizar cadastro. Verifique os dados e tente novamente.'))
     } finally {
       setLoading(false)
     }

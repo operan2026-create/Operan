@@ -4,6 +4,8 @@ import { Shield } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../hooks/useAuth'
+import { getApiErrorMessage } from '../lib/errors'
+import { homePathForUser } from '../lib/authRoutes'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
@@ -19,16 +21,9 @@ export function LoginPage() {
     setLoading(true)
     try {
       const res = await login(email, password)
-      const role = res.user.primary_role
-      if (role === 'ADMIN') {
-        navigate('/admin')
-      } else if (role === 'CLIENT') {
-        navigate('/cliente')
-      } else {
-        navigate('/participante')
-      }
+      navigate(homePathForUser(res.user))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Credenciais inválidas.')
+      setError(getApiErrorMessage(err, 'Credenciais inválidas.'))
     } finally {
       setLoading(false)
     }

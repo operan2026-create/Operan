@@ -3,7 +3,6 @@ Organization service: handles all business logic for Organization
 creation, retrieval, and status management.
 """
 
-import hashlib
 import uuid
 from typing import List, Optional
 
@@ -11,14 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.organization import Organization, OrganizationStatus
+from app.security.blind_index import cnpj_index
 from app.security.encryption import crypto_manager
 
 
 def _hash_cnpj(cnpj: str) -> str:
-    """Returns a deterministic SHA-256 hex digest of the normalised CNPJ."""
-    # Strip non-digit characters for normalisation before hashing
-    digits_only = "".join(filter(str.isdigit, cnpj))
-    return hashlib.sha256(digits_only.encode()).hexdigest()
+    """Returns the keyed blind index of the normalised CNPJ."""
+    return cnpj_index(cnpj)
 
 
 def _generate_org_public_id() -> str:
@@ -34,8 +32,8 @@ async def create_organization(
     """
     Creates a new Organization record.
 
-    - If a CNPJ is provided it is SHA-256 hashed for duplicate-safe indexing
-      and AES-256-GCM encrypted for storage.
+    - If a CNPJ is provided it is blind-indexed (HMAC-SHA256) for duplicate-safe
+      indexing and AES-256-GCM encrypted for storage.
     - New organisations start with ACTIVE status.
 
     :param db: Async database session.
@@ -89,10 +87,33 @@ async def get_organization_by_id(
     :param org_id: UUID string of the organization.
     :return: Organization ORM instance or None.
     """
+    try:
+        parsed_id = uuid.UUID(str(org_id))
+    except (ValueError, AttributeError):
+        return None
     result = await db.execute(
-        select(Organization).where(Organization.id == org_id)
+        select(Organization).where(Organization.id == parsed_id)
     )
     return result.scalars().first()
+
+
+async def get_organizations_by_ids(
+    db: AsyncSession,
+    organization_ids: List[uuid.UUID],
+    skip: int = 0,
+    limit: int = 20,
+) -> List[Organization]:
+    """Returns only the organizations explicitly allowed to the caller."""
+    if not organization_ids:
+        return []
+    result = await db.execute(
+        select(Organization)
+        .where(Organization.id.in_(organization_ids))
+        .order_by(Organization.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 async def update_organization_status(

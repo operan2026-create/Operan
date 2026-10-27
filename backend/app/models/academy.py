@@ -1,6 +1,6 @@
 import uuid
 import enum
-from sqlalchemy import Column, String, Text, Integer, Boolean, Enum, DateTime, ForeignKey, Numeric, func
+from sqlalchemy import Column, String, Text, Integer, Boolean, Enum, DateTime, ForeignKey, Numeric, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -9,6 +9,11 @@ class CourseStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     PUBLISHED = "PUBLISHED"
     ARCHIVED = "ARCHIVED"
+
+class CourseAudience(str, enum.Enum):
+    GLOBAL = "GLOBAL"
+    LOCATIONS = "LOCATIONS"
+    PROFESSIONALS = "PROFESSIONALS"
 
 class LessonContentType(str, enum.Enum):
     VIDEO = "VIDEO"
@@ -29,6 +34,7 @@ class Course(Base):
     description = Column(Text, nullable=True)
     thumbnail_url = Column(String, nullable=True)
     status = Column(Enum(CourseStatus), default=CourseStatus.DRAFT, nullable=False)
+    audience = Column(Enum(CourseAudience), default=CourseAudience.GLOBAL, nullable=False, index=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -79,6 +85,22 @@ class Lesson(Base):
 
     # Relationships
     module = relationship("Module", back_populates="lessons")
+
+class LessonCompletion(Base):
+    __tablename__ = "lesson_completions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_id = Column(UUID(as_uuid=True), ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False, index=True)
+    completed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "lesson_id", name="uq_lesson_completion_user_lesson"),
+    )
+
+    user = relationship("User")
+    lesson = relationship("Lesson")
+
 
 class Certification(Base):
     __tablename__ = "certifications"

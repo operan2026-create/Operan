@@ -1,7 +1,7 @@
 from pydantic import BaseModel, UUID4, ConfigDict
 from typing import Optional, List
 from datetime import datetime
-from app.models.academy import CourseStatus, LessonContentType, CertificationStatus
+from app.models.academy import CourseAudience, CourseStatus, LessonContentType, CertificationStatus
 
 # Lesson Schemas
 class LessonBase(BaseModel):
@@ -59,6 +59,7 @@ class CourseBase(BaseModel):
     thumbnail_url: Optional[str] = None
     status: CourseStatus = CourseStatus.DRAFT
     organization_id: Optional[UUID4] = None
+    audience: CourseAudience = CourseAudience.GLOBAL
 
 class CourseCreate(CourseBase):
     pass
@@ -70,6 +71,14 @@ class CourseResponse(CourseBase):
     versions: List[CourseVersionResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class LessonCompletionResponse(BaseModel):
+    lesson_id: UUID4
+    completed: bool = True
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 # Certification Schemas (Passaporte Operacional)
 class CertificationResponse(BaseModel):

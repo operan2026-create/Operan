@@ -12,18 +12,38 @@ router = APIRouter(prefix="/professionals", tags=["Professionals"])
 async def list_professionals(
     city: Optional[str] = None,
     state: Optional[str] = None,
+    function: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     context: UserContext = Depends(get_current_user_context),
 ):
-    # Only Admin and Client managers can browse the collaborator network
     if not context.is_admin and not context.is_client:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso negado: a visualização da rede de profissionais é restrita à administração e contratantes autorizados."
+            detail="Acesso negado: a visualizacao da rede de profissionais e restrita a administracao e contratantes autorizados.",
         )
 
-    profs = await network_service.list_professionals(db, city=city, state=state)
-    return [ProfessionalResponse.model_validate(p) for p in profs]
+    organization_ids = None
+    if not context.is_admin:
+        organization_ids = context.client_organization_ids
+        if not organization_ids:
+            return []
+    profs = await network_service.list_professionals(
+        db,
+        city=city,
+        state=state,
+        organization_ids=organization_ids,
+        function_name=function,
+    )
+    qualifications = await network_service.qualifications_for_users(
+        db, [p.user_id for p in profs]
+    )
+    output = []
+    for professional in profs:
+        response = ProfessionalResponse.model_validate(professional)
+        response.public_id = professional.user.public_id if professional.user else None
+        response.qualifications = qualifications.get(professional.user_id, [])
+        output.append(response)
+    return output
 
 @router.post("", response_model=ProfessionalResponse, status_code=status.HTTP_201_CREATED)
 async def create_professional(
